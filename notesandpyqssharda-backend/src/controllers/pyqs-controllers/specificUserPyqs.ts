@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { Pyq } from "../../models/pyqs/pyq.model.js";
+import { db } from "../../config/firebase.js";
 
 export const fetchSpecificUserPyqs = async (req: Request, res: Response) => {
   try {
@@ -10,8 +10,14 @@ export const fetchSpecificUserPyqs = async (req: Request, res: Response) => {
         message: "Unauthorized",
       });
     }
-    const pyqs = await Pyq.find({ userId }).sort({ createdAt: -1 });
+    const snap = await db.collection("pyqs")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+
+    const pyqs = snap.docs.map(doc => ({ ...doc.data(), _id: doc.id }));
     console.log("specific user pyqs", pyqs);
+
     res.status(200).json({
       success: true,
       pyqs,

@@ -6,7 +6,7 @@ import { User } from "../../models/users/user.model.js";
 //fetch all users
 export const fetchAllUsers = async (req: Request, res: Response) => {
     try {
-        const users = await User.find({}, "-password -__v").lean();
+        const users = await User.find({});
         res.status(200).json({ success: true, users });
     } catch (error) {
         res.status(500).json({ success: false, message: "Failed to fetch users" });
@@ -15,7 +15,7 @@ export const fetchAllUsers = async (req: Request, res: Response) => {
 
 export const fetchActiveUsers = async (req: Request, res: Response) => {
     try {
-        const users = await User.find({ isActive: true }, "-password -__v").lean();
+        const users = await User.find({ isActive: true });
         res.status(200).json({ success: true, users });
     } catch (error) {
         res.status(500).json({ success: false, message: "Failed to fetch active users" });
@@ -24,7 +24,7 @@ export const fetchActiveUsers = async (req: Request, res: Response) => {
 
 export const fetchInactiveUsers = async (req: Request, res: Response) => {
     try {
-        const users = await User.find({ isActive: false }, "-password -__v").lean();
+        const users = await User.find({ isActive: false });
         res.status(200).json({ success: true, users });
     }
     catch (error) {

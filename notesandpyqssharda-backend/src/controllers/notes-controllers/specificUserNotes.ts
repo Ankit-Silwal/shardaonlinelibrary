@@ -1,6 +1,5 @@
-//controller that will fetch all the notes uploaded by a specific user
 import { Request, Response } from "express";
-import { Note } from "../../models/notes/notes.model.js";
+import { db } from "../../config/firebase.js";
 
 export const fetchSpecificUserNotes = async (req: Request, res: Response) => {
   try {
@@ -11,8 +10,14 @@ export const fetchSpecificUserNotes = async (req: Request, res: Response) => {
         message: "Unauthorized",
       });
     }
-    const notes = await Note.find({ userId }).sort({ createdAt: -1 });
-    console.log("specific user notes",notes);
+    const snap = await db.collection("notes")
+        .where("userId", "==", userId)
+        .orderBy("createdAt", "desc")
+        .get();
+
+    const notes = snap.docs.map(doc => ({ ...doc.data(), _id: doc.id }));
+    console.log("specific user notes", notes);
+
     res.status(200).json({
       success: true,
       notes,

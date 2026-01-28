@@ -1,18 +1,31 @@
-//fetch all syllabus
 import { Request, Response } from "express";
-import { Syllabus } from "../../models/syllabus/syllabus.model.js";
+import { db } from "../../config/firebase.js";
+import { User } from "../../models/users/user.model.js";
 
 export const fetchAllSyllabus = async (req: Request, res: Response) => {
   try {
     const { limit = "10" } = req.query;
     const limitNum = parseInt(limit as string);
 
-    // Fetch only approved syllabus, sorted by creation date (most recent first)
-    const syllabuses = await Syllabus.find({ status: "approved" })
-      .sort({ createdAt: -1 })
+    const snap = await db.collection("syllabus")
+      .where("status", "==", "approved")
+      .orderBy("createdAt", "desc")
       .limit(limitNum)
-      .populate("userId", "username")
-      .lean();
+      .get();
+
+    const syllabuses = await Promise.all(snap.docs.map(async (doc) => {
+      const data = doc.data();
+      let userDetails: any = null;
+      if (data.userId) {
+        const u = await User.findById(data.userId);
+        if (u) userDetails = { _id: u._id, username: u.name };
+      }
+      return {
+        ...data,
+        _id: doc.id,
+        userId: userDetails || data.userId,
+      };
+    }));
 
     res.status(200).json({
       success: true,

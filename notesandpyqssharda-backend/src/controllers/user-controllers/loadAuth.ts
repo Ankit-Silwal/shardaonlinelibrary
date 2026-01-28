@@ -12,9 +12,7 @@ declare global {
 export const getMe = async (req: Request, res: Response) => {
   const userId = req.data?.user.id;
 
-  const user = await User.findById(userId).select(
-    "_id name email role isEmailVerified"
-  );
+  const user = await User.findById(userId);
 
   if (!user) {
     return res.status(401).json({

@@ -12,7 +12,7 @@ export const changePassword = async (req: Request, res: Response) => {
         });
     } 
     try {
-        const user = await User.findOne({email}).select("+password");
+        const user = await User.findOne({email});
         if (!user) {
             return res.status(404).json({
                 success: false,

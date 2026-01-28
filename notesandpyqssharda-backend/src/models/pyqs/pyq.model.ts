@@ -1,86 +1,115 @@
-import mongoose from "mongoose";
-import { Schema } from "mongoose";
-const ObjectId = Schema.Types.ObjectId;
-const pyqSchema = new Schema(
-  {
-    title: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    fileUrl: {
-      type: String,
-      required: true,
-    },
-    userId: {
-      type: ObjectId,
-      ref: "User",
-      required: true,
-    },
-    program: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    courseCode: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    courseName: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    semester: {
-      type: Number,
-      required: true,
-    },
-    year: {
-      type: String,
-      required: true,
-    },
-    publicId: {
-      type: String,
-      required: true,
-    },
-    //MODERATION SYSTEM
-    status: {
-      type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending",
-    },
+import { db } from "../../config/firebase.js";
 
-    approvedBy: {
-      type: ObjectId,
-      ref: "User",
-      default: null,
-    },
+const collection = db.collection("pyqs");
 
-    approvedAt: {
-      type: Date,
-      default: null,
-    },
+export class Pyq {
+  _id: string;
+  title: string;
+  fileUrl: string;
+  publicId: string;
+  userId: string;
+  program: string;
+  courseCode: string;
+  courseName: string;
+  semester: number;
+  year: string; // Pyq specific
+  status: "pending" | "approved" | "rejected";
+  approvedBy?: string | null;
+  approvedAt?: Date | null;
+  rejectedBy?: string | null;
+  rejectedAt?: Date | null;
+  rejectionReason?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
 
-    rejectedBy: {
-      type: ObjectId,
-      ref: "User",
-      default: null,
-    },
+  constructor(data: any) {
+    this._id = data._id || data.id;
+    this.title = data.title;
+    this.fileUrl = data.fileUrl;
+    this.publicId = data.publicId;
+    this.userId = data.userId ? data.userId.toString() : "";
+    this.program = data.program;
+    this.courseCode = data.courseCode;
+    this.courseName = data.courseName;
+    this.semester = data.semester;
+    this.year = data.year;
+    this.status = data.status || "pending";
+    this.approvedBy = data.approvedBy ? data.approvedBy.toString() : null;
+    this.rejectedBy = data.rejectedBy ? data.rejectedBy.toString() : null;
+    this.rejectionReason = data.rejectionReason || null;
 
-    rejectedAt: {
-      type: Date,
-      default: null,
-    },
-
-    rejectionReason: {
-      type: String,
-      default: null,
-    },
-  },
-  {
-    timestamps: true, // createdAt, updatedAt
+    this.approvedAt = this.toDate(data.approvedAt);
+    this.rejectedAt = this.toDate(data.rejectedAt);
+    this.createdAt = this.toDate(data.createdAt);
+    this.updatedAt = this.toDate(data.updatedAt);
   }
-);
 
-export const Pyq = mongoose.model("Pyq", pyqSchema, "pyqs");
+  private toDate(val: any): Date | undefined {
+    if (!val) return undefined;
+    if (val instanceof Date) return val;
+    if (val.toDate && typeof val.toDate === 'function') return val.toDate();
+    return new Date(val);
+  }
+
+  async save() {
+    const now = new Date();
+    this.updatedAt = now;
+    if (!this.createdAt) this.createdAt = now;
+
+    const toSave: any = { ...this };
+    delete toSave._id;
+
+    if (this._id) {
+      await collection.doc(this._id).set(toSave, { merge: true });
+    } else {
+      const res = await collection.add(toSave);
+      this._id = res.id;
+    }
+    return this;
+  }
+
+  static async findOne(query: any) {
+    let ref: FirebaseFirestore.Query = collection;
+    for (const [key, val] of Object.entries(query)) {
+      if (val !== undefined) ref = ref.where(key, "==", val);
+    }
+    const snap = await ref.limit(1).get();
+    if (snap.empty) return null;
+    return new Pyq({ ...snap.docs[0].data(), _id: snap.docs[0].id });
+  }
+
+  static async findById(id: string) {
+    if (!id) return null;
+    const doc = await collection.doc(id).get();
+    if (!doc.exists) return null;
+    return new Pyq({ ...doc.data(), _id: doc.id });
+  }
+
+  static async find(query: any = {}) {
+    let ref: FirebaseFirestore.Query = collection;
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && typeof value !== 'object') ref = ref.where(key as string, "==", value);
+    }
+    const snapshot = await ref.get();
+    return snapshot.docs.map(
+      (doc: any) => new Pyq({ ...doc.data(), _id: doc.id })
+    );
+  }
+
+  static async countDocuments(query: any = {}) {
+     return (await this.find(query)).length;
+  }
+
+  static async findByIdAndDelete(id: string) {
+      if (!id) return null;
+      await collection.doc(id).delete();
+      return true;
+  }
+
+  async deleteOne() {
+      if (this._id) {
+          await collection.doc(this._id).delete();
+      }
+  }
+}
+

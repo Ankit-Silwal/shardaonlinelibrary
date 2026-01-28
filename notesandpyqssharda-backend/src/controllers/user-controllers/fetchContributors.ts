@@ -1,13 +1,24 @@
 import { Request, Response } from "express";
-import { User } from "../../models/users/user.model.js";
+import { db } from "../../config/firebase.js";
 
 export const fetchContributors = async (req: Request, res: Response) => {
   try {
-    const contributors = await User.find({ contributions: { $gt: 0 } })
-      .select("name email contributions createdAt")
-      .sort({ contributions: -1 })
+    const contributorsSnap = await db.collection("users")
+      .where("contributions", ">", 0)
+      .orderBy("contributions", "desc")
       .limit(50)
-      .lean();
+      .get();
+
+    const contributors = contributorsSnap.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        _id: doc.id,
+        name: d.name,
+        email: d.email,
+        contributions: d.contributions,
+        createdAt: d.createdAt,
+      };
+    });
 
     res.status(200).json({
       success: true,

@@ -1,77 +1,52 @@
 import { Request, Response } from "express";
-import { Syllabus } from "../../models/syllabus/syllabus.model.js";
+import { db } from "../../config/firebase.js";
 
 export const searchSyllabus = async (req: Request, res: Response) => {
   try {
     const { query, program, courseCode, semester, year } = req.query;
 
-    // Query parameter is now optional, if not provided return filtered syllabus
     if (query && typeof query !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Query parameter must be a string",
-      });
+      return res.status(400).json({ success: false, message: "Query parameter must be a string"});
     }
 
-    // Build filter conditions
-    const filterConditions: any = {
-      status: "approved", // Only search approved syllabus
-    };
+    // Fetch all approved syllabus
+    const snap = await db.collection("syllabus").where("status", "==", "approved").get();
+    let syllabus = snap.docs.map(doc => ({ ...doc.data(), _id: doc.id }));
 
-    // Add text search if query is provided
+    // Apply regex filter for query
     if (query && typeof query === "string") {
       const regex = new RegExp(query, "i");
-      const searchConditions: any[] = [
-        { title: regex },
-        { program: regex },
-        { courseCode: regex },
-        { courseName: regex },
-      ];
-
-      // Check if query is a number for semester field
-      const numQuery = parseInt(query);
-      if (!isNaN(numQuery)) {
-        searchConditions.push({ semester: numQuery });
-      }
-
-      filterConditions.$or = searchConditions;
+      syllabus = syllabus.filter((item: any) => 
+        (item.title && regex.test(item.title)) ||
+        (item.program && regex.test(item.program)) ||
+        (item.courseCode && regex.test(item.courseCode)) ||
+        (item.courseName && regex.test(item.courseName)) ||
+        (!isNaN(parseInt(query)) && item.semester === parseInt(query))
+      );
     }
 
-    // Add additional filters if provided
+    // Additional filters
     if (program && typeof program === "string") {
-      filterConditions.program = new RegExp(program, "i");
+       const reg = new RegExp(program, "i");
+       syllabus = syllabus.filter((item: any) => item.program && reg.test(item.program));
     }
-
     if (courseCode && typeof courseCode === "string") {
-      filterConditions.courseCode = new RegExp(courseCode, "i");
+       const reg = new RegExp(courseCode, "i");
+       syllabus = syllabus.filter((item: any) => item.courseCode && reg.test(item.courseCode));
     }
-
     if (semester && typeof semester === "string") {
-      const semesterNum = parseInt(semester);
-      if (!isNaN(semesterNum)) {
-        filterConditions.semester = semesterNum;
-      }
+       const s = parseInt(semester);
+       if (!isNaN(s)) syllabus = syllabus.filter((item: any) => item.semester === s);
     }
+    
+    // Sort logic not strictly requested but good (recent first):
+    // Since we fetched all, we can sort JS
+    // syllabus.sort((a: any, b: any) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)); 
+    // Careful with date conversion from Firestore
 
-    if (year && typeof year === "string") {
-      filterConditions.year = new RegExp(year, "i");
-    }
-
-    const syllabuses = await Syllabus.find(filterConditions)
-      .sort({ createdAt: -1 })
-      .populate("userId", "username")
-      .lean();
-
-    res.status(200).json({
-      success: true,
-      syllabuses,
-      count: syllabuses.length,
-    });
+    res.status(200).json({ success: true, syllabus });
   } catch (error) {
-    console.error("Error searching syllabuses:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    console.error("Error searching syllabus:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };

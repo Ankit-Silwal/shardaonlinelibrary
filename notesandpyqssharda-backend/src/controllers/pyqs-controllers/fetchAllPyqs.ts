@@ -1,17 +1,31 @@
 import { Request, Response } from "express";
-import { Pyq } from "../../models/pyqs/pyq.model.js";
+import { db } from "../../config/firebase.js";
+import { User } from "../../models/users/user.model.js";
 
 export const fetchAllPyqs = async (req: Request, res: Response) => {
   try {
     const { limit = "10" } = req.query;
     const limitNum = parseInt(limit as string);
 
-    // Fetch only approved pyqs, sorted by creation date (most recent first)
-    const pyqs = await Pyq.find({ status: "approved" })
-      .sort({ createdAt: -1 })
+    const snap = await db.collection("pyqs")
+      .where("status", "==", "approved")
+      .orderBy("createdAt", "desc")
       .limit(limitNum)
-      .populate("userId", "username")
-      .lean();
+      .get();
+
+    const pyqs = await Promise.all(snap.docs.map(async (doc) => {
+      const data = doc.data();
+      let userDetails: any = null;
+      if (data.userId) {
+        const u = await User.findById(data.userId);
+        if (u) userDetails = { _id: u._id, username: u.name };
+      }
+      return {
+        ...data,
+        _id: doc.id,
+        userId: userDetails || data.userId,
+      };
+    }));
 
     res.status(200).json({
       success: true,

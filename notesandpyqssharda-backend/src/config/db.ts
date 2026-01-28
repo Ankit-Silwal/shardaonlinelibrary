@@ -1,14 +1,10 @@
-import mongoose from "mongoose";
+import { db } from "./firebase.js";
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI as string, {
-      dbName: process.env.MONGO_DB_NAME,
-    });
-
-    console.log("✅ MongoDB connected to shardanotesandpyqs_dev");
+    console.log("✅ Firebase Firestore initialized (connectDB called)");
   } catch (error) {
-    console.error("❌ MongoDB connection failed:", error);
+    console.error("❌ Firebase init failed:", error);
     process.exit(1);
   }
 };

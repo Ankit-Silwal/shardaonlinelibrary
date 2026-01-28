@@ -1,113 +1,93 @@
 import { Request, Response } from "express";
-import { Note } from "../../models/notes/notes.model.js";
+import { db } from "../../config/firebase.js";
 import { User } from "../../models/users/user.model.js";
-import { contentRejectionMail } from "../../utils/email.js";
-import { contentApprovalMail } from "../../utils/email.js";
+import { contentRejectionMail, contentApprovalMail } from "../../utils/email.js";
 
-//fetch all notes pending approval
+// Fetch pending notes
 export const fetchPendingNotes = async (req: Request, res: Response) => {
   try {
-    const notes = await Note.find({ status: "pending" })
-      .populate("userId", "name email username")
-      .sort({ createdAt: -1 })
-      .lean();
+    const snap = await db.collection("notes")
+        .where("status", "==", "pending")
+        .orderBy("createdAt", "desc")
+        .get();
+
+    const notes = await Promise.all(snap.docs.map(async doc => {
+        const d = doc.data();
+        let u: any = null;
+        if (d.userId) {
+            const user = await User.findById(d.userId);
+            if (user) u = { _id: user._id, name: user.name, email: user.email };
+        }
+        return { ...d, _id: doc.id, userId: u || d.userId };
+    }));
     res.status(200).json({ success: true, notes });
   } catch (error) {
     console.error("Error fetching pending notes:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to fetch pending notes" });
+    res.status(500).json({ success: false, message: "Failed to fetch pending notes" });
   }
 };
 
-//reject a note pending approval
+// Reject note
 export const rejectNote = async (req: Request, res: Response) => {
   const { noteId } = req.params;
   const { rejectionReason } = req.body;
+
   try {
-    if (!rejectionReason || rejectionReason.trim() === "") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Rejection reason is required" });
+    if (!rejectionReason) return res.status(400).json({ success: false, message: "Reason required" });
+
+    const docRef = db.collection("notes").doc(noteId);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: "Not found" });
+
+    const data = doc.data();
+    
+    await docRef.set({
+        status: "rejected",
+        rejectionReason,
+        rejectedAt: new Date(),
+        rejectedBy: req.user?.userId
+    }, { merge: true });
+
+    if (data && data.userId) {
+        const user = await User.findById(data.userId);
+        if (user) {
+            await contentRejectionMail(user.email, user.name, "Note", rejectionReason);
+        }
     }
 
-    const note = await Note.findOne({ status: "pending", _id: noteId });
-    if (!note) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Note not found" });
-    }
-
-    const user = await User.findById(note.userId.toString());
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-    }
-
-    // Use findByIdAndUpdate to avoid validation errors on unchanged fields
-    await Note.findByIdAndUpdate(noteId, {
-      status: "rejected",
-      rejectionReason: rejectionReason,
-      rejectedAt: new Date(),
-      rejectedBy: req.user!.userId,
-    });
-
-    // Send email asynchronously (non-blocking) - don't await
-    contentRejectionMail(user.email, user.name, "note", rejectionReason).catch(
-      (err) => {
-        console.error("Failed to send rejection email:", err);
-      },
-    );
-
-    return res
-      .status(200)
-      .json({ success: true, message: "Note rejected successfully" });
+    res.status(200).json({ success: true, message: "Note rejected" });
   } catch (error) {
-    console.error("Error in rejecting note:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Internal server error" });
+     console.error(error);
+     res.status(500).json({ success: false, message: "Internal Error" });
   }
 };
 
-//approve a note pending approval
+// Approve note
 export const approveNote = async (req: Request, res: Response) => {
   const { noteId } = req.params;
   try {
-    const note = await Note.findOne({ status: "pending", _id: noteId });
-    if (!note) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Note not found" });
+    const docRef = db.collection("notes").doc(noteId);
+    const doc = await docRef.get();
+    if (!doc.exists) return res.status(404).json({ success: false, message: "Not found" });
+
+    const data = doc.data();
+
+    await docRef.set({
+        status: "approved",
+        approvedAt: new Date(),
+        approvedBy: req.user?.userId
+    }, { merge: true });
+
+    if (data && data.userId) {
+         const user = await User.findById(data.userId);
+         if (user) {
+             await contentApprovalMail(user.email, user.name, "Note");
+         }
     }
-
-    const user = await User.findById(note.userId.toString());
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
-    }
-
-    // Use findByIdAndUpdate to avoid validation errors on unchanged fields
-    await Note.findByIdAndUpdate(noteId, {
-      status: "approved",
-      approvedAt: new Date(),
-      approvedBy: req.user!.userId,
-    });
-
-    // Send email asynchronously (non-blocking) - don't await
-    contentApprovalMail(user.email, user.name, "note").catch((err) => {
-      console.error("Failed to send approval email:", err);
-    });
-
-    return res
-      .status(200)
-      .json({ success: true, message: "Note approved successfully" });
+    
+    res.status(200).json({ success: true, message: "Note approved" });
   } catch (error) {
-    console.error("Error in approving note:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Internal server error" });
+     console.error(error);
+     res.status(500).json({ success: false, message: "Internal Error" });
   }
 };

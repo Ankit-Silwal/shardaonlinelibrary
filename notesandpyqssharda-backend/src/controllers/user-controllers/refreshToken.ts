@@ -19,7 +19,7 @@ export const refreshAccessToken = async (req: Request, res: Response) => {
     ) as { userId: string };
 
     // Must use .select("+refreshToken") because it has select: false in the model
-    const user = await User.findById(payload.userId).select("+refreshToken");
+    const user = await User.findById(payload.userId);
 
     if (!user || user.refreshToken !== refreshToken) {
       return res.status(403).json({ message: "Invalid refresh token" });

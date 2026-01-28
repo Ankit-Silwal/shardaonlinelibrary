@@ -1,77 +1,49 @@
 import { Request, Response } from "express";
-import { Pyq } from "../../models/pyqs/pyq.model.js";
+import { db } from "../../config/firebase.js";
 
 export const searchPyqs = async (req: Request, res: Response) => {
   try {
     const { query, program, courseCode, semester, year } = req.query;
 
-    // Query parameter is now optional, if not provided return filtered pyqs
     if (query && typeof query !== "string") {
-      return res.status(400).json({
-        success: false,
-        message: "Query parameter must be a string",
-      });
+      return res.status(400).json({ success: false, message: "Query parameter must be a string" });
     }
 
-    // Build filter conditions
-    const filterConditions: any = {
-      status: "approved", // Only search approved pyqs
-    };
+    const snap = await db.collection("pyqs").where("status", "==", "approved").get();
+    let pyqs = snap.docs.map(doc => ({ ...doc.data(), _id: doc.id }));
 
-    // Add text search if query is provided
     if (query && typeof query === "string") {
       const regex = new RegExp(query, "i");
-      const searchConditions: any[] = [
-        { title: regex },
-        { program: regex },
-        { courseCode: regex },
-        { courseName: regex },
-      ];
-
-      // Check if query is a number for semester field
-      const numQuery = parseInt(query);
-      if (!isNaN(numQuery)) {
-        searchConditions.push({ semester: numQuery });
-      }
-
-      filterConditions.$or = searchConditions;
+      pyqs = pyqs.filter((item: any) => 
+        (item.title && regex.test(item.title)) ||
+        (item.program && regex.test(item.program)) ||
+        (item.courseCode && regex.test(item.courseCode)) ||
+        (item.courseName && regex.test(item.courseName)) ||
+        (item.year && regex.test(item.year)) ||
+        (!isNaN(parseInt(query)) && item.semester === parseInt(query))
+      );
     }
 
-    // Add additional filters if provided
     if (program && typeof program === "string") {
-      filterConditions.program = new RegExp(program, "i");
+       const reg = new RegExp(program, "i");
+       pyqs = pyqs.filter((item: any) => item.program && reg.test(item.program));
     }
-
     if (courseCode && typeof courseCode === "string") {
-      filterConditions.courseCode = new RegExp(courseCode, "i");
+       const reg = new RegExp(courseCode, "i");
+       pyqs = pyqs.filter((item: any) => item.courseCode && reg.test(item.courseCode));
     }
-
     if (semester && typeof semester === "string") {
-      const semesterNum = parseInt(semester);
-      if (!isNaN(semesterNum)) {
-        filterConditions.semester = semesterNum;
-      }
+       const s = parseInt(semester);
+       pyqs = pyqs.filter((item: any) => item.semester === s);
     }
-
     if (year && typeof year === "string") {
-      filterConditions.year = new RegExp(year, "i");
+       const reg = new RegExp(year, "i");
+       pyqs = pyqs.filter((item: any) => item.year && reg.test(item.year));
     }
 
-    const pyqs = await Pyq.find(filterConditions)
-      .sort({ createdAt: -1 })
-      .populate("userId", "username")
-      .lean();
-
-    res.status(200).json({
-      success: true,
-      pyqs,
-      count: pyqs.length,
-    });
+    res.status(200).json({ success: true, pyqs });
   } catch (error) {
     console.error("Error searching pyqs:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
